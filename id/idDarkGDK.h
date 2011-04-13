@@ -19,4 +19,8 @@
 
 #include <id/DarkGDK/Image.h>
 
+#include <id/DarkGDK/Sound.h>
+
+#include <id/DarkGDK/Music.h>
+
 #endif
