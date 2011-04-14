@@ -23,4 +23,6 @@
 
 #include <id/DarkGDK/Music.h>
 
+#include <id/DarkGDK/GDKFont.h>
+
 #endif
