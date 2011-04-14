@@ -81,6 +81,11 @@ public:
 	{
 		return i.GetWidth();
 	}
+	
+	int Height()
+	{
+		return i.GetHeight();
+	}
 
 	~Image() { DecRef(); }
 };
