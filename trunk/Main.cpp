@@ -1,7 +1,7 @@
 #include <id/idDarkGDK.h>
 #include <id/HighResTimer.h>
 
-// I should really find a better place for this
+// We should really find a better place for this
 DarkGDKExt::HandleAllocator<1, 65535> DarkGDKExt::Image::h;
 DarkGDKExt::HandleAllocator<1, 32> DarkGDKExt::Bitmap::h;
 DarkGDKExt::HandleAllocator<1, 65535> DarkGDKExt::Sound::h;
@@ -69,6 +69,8 @@ public:
 void DarkGDK()
 {
 	dbSetDisplayMode(1024, 768, 32);
+
+	// fails on dual screen
 	//dbSetWindowOff();
 
 	dbSyncOn();
