@@ -43,7 +43,7 @@ class MainMenu : public Menu
 	bool mouse_down;
 public:
 	MainMenu()
-		: f_welcome(DarkGDKFont("Arial", 48, Font_BoldItalic, dbRGB(255, 255, 255)).Render("Welcome to Battleship!")),
+		: f_welcome(DarkGDKFont("Arial", 48, Font_Italic, dbRGB(255, 255, 255)).Render("Welcome to Battleship!")),
 		  f_play(DarkGDKFont("Times", 24).Render("Click Anywhere to Play!"))
 	{
 		mouse_down = false;
