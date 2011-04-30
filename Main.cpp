@@ -1,6 +1,7 @@
 #include <id/idDarkGDK.h>
 #include <id/HighResTimer.h>
 #include <sstream>
+#include <ctime>
 
 // We should really find a better place for this
 DarkGDKExt::HandleAllocator<1, 65535> DarkGDKExt::Image::h;
@@ -10,6 +11,32 @@ DarkGDKExt::HandleAllocator<1, 65535> DarkGDKExt::Music::h;
 
 using namespace Idknoti;
 using namespace DarkGDKExt;
+using namespace std;
+
+class Button
+{
+private:
+	int _x, _y;
+	Image _i;
+public:
+	Button(Image i, int x, int y)
+		: _i(i)
+	{
+		_x = x;
+		_y = y;
+	}
+
+	Vec2i getPosition() { return Vec2i(_x, _y); }
+	void setPosition(int x, int y) { _x = x; _y = y; }
+	int getWidth() { return _i.Width(); }
+	int getHeight() { return _i.Height(); }
+
+	void Render() { _i.Paste(_x, _y); }
+	bool withinBounds(Vec2i m)
+	{
+		return m.x() >= _x && m.y() >= _y && m.x() <= _x + _i.Width() && m.y() <= _y + _i.Height();
+	}
+};
 
 class Ship
 {
@@ -18,6 +45,19 @@ private:
 	int _x, _y; // Location on grid
 	int _h, _w;
 public:
+	Ship()
+		: _i(Bitmap(1, 1))
+	{
+	}
+
+	Ship(const Ship& other)
+		:_i(other._i)
+	{
+		_x = other._x;
+		_y = other._y;
+		_h = other._h;
+		_w = other._w;
+	}
 	Ship(Image i, int x, int y, int h, int w)
 		: _i(i)
 	{
@@ -45,9 +85,14 @@ public:
 
 	bool HitBy(Vec2i gridPos)
 	{
-		return gridPos.x() >= _x && gridPos.x() <= _x + _w && gridPos.y() >= _y && gridPos.y() <= _y + _h;
+		return gridPos.x() >= _x && gridPos.x() < _x + _w && gridPos.y() >= _y && gridPos.y() < _y + _h;
 	}
+
+	int getWidth() { return _w; }
+	int getHeight() { return _h; }
 };
+
+vector<Ship> possibleShips; // 0,1;2,3;etc. same ship, different rotations
 
 enum CellState
 {
@@ -70,12 +115,41 @@ private:
 public:
 	BattleshipGrid()
 	{
+		_showShips = true;
 		_x = Vec2i(50, 0);
 		_y = Vec2i(0, 50);
 		_pos = Vec2i(5, 5);
 		for (int y = 0; y < 10; y++)
 			for (int x = 0; x < 10; x++)
 				board[x][y] = CELL_UNFIRED;
+		for (int s = 0; s < 5; s++)
+		{
+			Ship temp(possibleShips[2 * s + dbRND(1)]);
+			temp.setPosition(dbRND(10-temp.getWidth()), dbRND(10-temp.getHeight()));
+			for (vector<Ship>::iterator i = ships.begin(); i != ships.end(); ++i)
+			{
+				if (temp.IntersectsWith(*i))
+				{
+					--s;
+					goto OuterLoop;
+				}
+			}
+			ships.push_back(temp);
+OuterLoop:;
+		}
+	}
+
+	bool allIsLost()
+	{
+		for (int x = 0; x < 10; x++)
+		{
+			for (int y = 0; y < 10; y++)
+			{
+				if (board[x][y] == CELL_UNFIRED && thereIsShip(x, y))
+					return false;
+			}
+		}
+		return true;
 	}
 
 	void setPosition(Vec2i pos) { _pos = pos; }
@@ -83,12 +157,26 @@ public:
 	void setPosition(int x, int y) { _pos = Vec2i(x, y); }
 
 	CellState& state(int x, int y) { return board[x][y]; }
+	CellState& state(Vec2i v) { return board[v.x()][v.y()]; }
 
 	Vec2i MouseToCell(Vec2i m)
 	{
 		Vec2f temp = (Vec2f)m - (Vec2f)_pos;
 		temp = temp / 50.0f;
 		return Vec2i(floor(temp.x()), floor(temp.y()));
+	}
+
+	bool& shipsVisible() { return _showShips; }
+
+	bool thereIsShip(int x, int y)
+	{
+		for (vector<Ship>::iterator i = ships.begin(); i != ships.end(); ++i)
+		{
+			if (i->HitBy( Vec2i( x, y ) ) )
+				return true;
+		}
+		
+		return false;
 	}
 
 	void display()
@@ -98,8 +186,9 @@ public:
 		dbBox(_pos, _pos + 10 * _x + 10 * _y);
 
 		// display ships
-		for (vector<Ship>::iterator i = ships.begin(); i != ships.end(); ++i)
-			i->getImage().Paste(_pos + 50 * i->getPosition());
+		if (_showShips)
+			for (vector<Ship>::iterator i = ships.begin(); i != ships.end(); ++i)
+				i->getImage().Paste(_pos + 50 * i->getPosition());
 
 		// display grid
 		dbInk(0, 0);
@@ -138,7 +227,6 @@ public:
 			}
 		}
 	}
-
 };
 
 class Menu
@@ -148,27 +236,58 @@ public:
 	virtual void Display() = 0;
 };
 
+Menu* becauseCppWontLookFoward();
 
 class Battleship : public Menu
 {
 	Image f_title;
+	Button returnToMain;
 	BattleshipGrid ai;
 	BattleshipGrid player;
 public:
 	Battleship()
-		: f_title(DarkGDKFont("Times", 32).Render("BATTLESHIP!"))
+		: f_title(DarkGDKFont("Times", 32).Render("BATTLESHIP!")),
+		returnToMain(DarkGDKFont("Times", 32).Render("Return to Main Menu"), 0, 0)
 	{
+		returnToMain.setPosition(dbScreenWidth() / 2 - returnToMain.getWidth() / 2, dbScreenHeight() - returnToMain.getHeight() - 75); 
 		ai.setPosition(0, 134);
+		ai.shipsVisible() = false;
 		player.setPosition(524, 134);
 	}
 	virtual Menu* Update(float elapsed)
 	{
 		if (dbMouseClick() & 1)
 		{
-			Vec2i temp = player.MouseToCell(dbMouse());
+			Vec2i temp = ai.MouseToCell(dbMouse());
 			if (temp.x() >= 0 && temp.x() < 10 && temp.y() >= 0 && temp.y() < 10)
-				player.state(temp.x(), temp.y()) = (CellState)dbRND(2);
+			{
+				CellState s = ai.state(temp.x(), temp.y());
+				if (s == CELL_UNFIRED && !ai.allIsLost() && !player.allIsLost())
+				{
+					if ( ai.thereIsShip( temp.x(), temp.y() ) )
+						ai.state( temp.x(), temp.y() ) = CELL_HIT;
+					else
+						ai.state( temp.x(), temp.y() ) = CELL_MISSED;
 
+					// ai shoots
+					while ( player.state( temp = Vec2i( dbRND(9), dbRND(9) ) ) != CELL_UNFIRED )
+						;
+					if ( player.thereIsShip( temp.x(), temp.y() ) )
+						player.state( temp.x(), temp.y() ) = CELL_HIT;
+					else
+						player.state( temp.x(), temp.y() ) = CELL_MISSED;
+				}				
+			}
+
+			// back to main menu button
+			if (ai.allIsLost() || player.allIsLost())
+			{
+				if ( returnToMain.withinBounds( dbMouse() ) )
+				{
+					return becauseCppWontLookFoward();
+				}
+			}
+			
 		}
 		return this;
 	}
@@ -176,11 +295,30 @@ public:
 	{
 		f_title.Paste(dbScreenWidth() / 2 - f_title.Width() / 2, 0);
 
-		stringstream ss;
+		DarkGDKFont f;
+		/*stringstream ss;
 		Vec2i g = player.MouseToCell(dbMouse());
 		ss << "(" << g.x() << ", " << g.y() << ")";
-		DarkGDKFont f;
-		f.Render(ss.str().c_str()).Paste(0, 10);
+		
+		f.Render(ss.str().c_str()).Paste(0, 10);*/
+
+		Image i = f.Render("Computer");
+		i.Paste(250 - i.Width() / 2, 117);
+		i = f.Render("Player");
+		i.Paste(774 - i.Width() / 2, 117);
+
+		if (ai.allIsLost())
+		{
+			i = f.Render("YOU WIN!");
+			i.Paste(dbScreenWidth() / 2 - i.Width() / 2, 100);
+			returnToMain.Render();
+		}
+		else if (player.allIsLost())
+		{
+			i = f.Render("YOU LOSE!");
+			i.Paste(dbScreenWidth() / 2 - i.Width() / 2, 100);
+			returnToMain.Render();
+		}
 
 		ai.display();
 		player.display();
@@ -217,6 +355,8 @@ public:
 	}
 };
 
+Menu* becauseCppWontLookFoward() { return new MainMenu; }
+
 void DarkGDK()
 {
 	dbSetDisplayMode(1024, 768, 32);
@@ -225,6 +365,19 @@ void DarkGDK()
 	//dbSetWindowOff();
 
 	dbSyncOn();
+
+	dbRandomize(time(NULL));
+
+	possibleShips.push_back(Ship(Image("battlestarGalactica2x4.png"), 0, 0, 4, 2));
+	possibleShips.push_back(Ship(Image("battlestarGalactica4x2.png"), 0, 0, 2, 4));
+	possibleShips.push_back(Ship(Image("mFalcon.png"), 0, 0, 2, 2));
+	possibleShips.push_back(Ship(Image("mFalcon.png"), 0, 0, 2, 2));
+	possibleShips.push_back(Ship(Image("starDestroyer1x5.png"), 0, 0, 5, 1));
+	possibleShips.push_back(Ship(Image("starDestroyer5x1.png"), 0, 0, 1, 5));
+	possibleShips.push_back(Ship(Image("ussEnterprise2x3.png"), 0, 0, 3, 2));
+	possibleShips.push_back(Ship(Image("ussEnterprise3x2.png"), 0, 0, 2, 3));
+	possibleShips.push_back(Ship(Image("xWing1x2.png"), 0, 0, 2, 1));
+	possibleShips.push_back(Ship(Image("xWing2x1.png"), 0, 0, 1, 2));
 
 	auto_ptr<Menu> menu(new MainMenu);
 
@@ -247,6 +400,8 @@ void DarkGDK()
 
 		dbSync();
 	}
+
+	possibleShips.clear();
 	
 	return;
 }
